@@ -62,8 +62,9 @@ function getWithRedirects(url, cb) {
       console.log("HEADERS:", JSON.stringify(response.headers));
     }
 
-    if(response.statusCode > 300 && response.statusCode <= 303) {
-      if (debug) console.log("following redirect", response.headers.location);
+    if (response.statusCode > 300 && response.statusCode <= 303) {
+      if (debug)
+        console.log("following redirect", response.headers.location);
       await getWithRedirects(response.headers.location, cb);
     }
 
@@ -73,7 +74,8 @@ function getWithRedirects(url, cb) {
     response.on("data", (chunk) => rv += chunk);
 
     response.on("end", () => {
-      if (debug) console.log("End received");
+      if (debug)
+        console.log("End received");
       cb(rv);
     });
   });

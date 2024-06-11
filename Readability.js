@@ -495,7 +495,7 @@ Readability.prototype = {
       // could assume it's the full title.
       var headings = this._concatNodeLists(
         doc.getElementsByTagName("h1"),
-        doc.getElementsByTagName("h2")
+        doc.getElementsByTagName("h2"),
       );
       var trimmedTitle = curTitle.trim();
       var match = this._someNode(headings, function(heading) {
@@ -1401,7 +1401,7 @@ Readability.prototype = {
           if (!parsed["@type"] && Array.isArray(parsed["@graph"])) {
             parsed = parsed["@graph"].find(function(it) {
               return (it["@type"] || "").match(
-                this.REGEXPS.jsonLdArticleTypes
+                this.REGEXPS.jsonLdArticleTypes,
               );
             });
           }
@@ -1471,6 +1471,36 @@ Readability.prototype = {
   },
 
   /**
+   * Swaps the "Surname, GivenName" formatted bylines to "GivenName Surname".
+   *
+   * @param {string|string[]} name
+   * @returns Name or names in "GivenName Surname" format
+   */
+  _normalizeByline: function(name) {
+    var result = name;
+
+    if (Array.isArray(name)) {
+      return name.map((n) => this._normalizeByline(n));
+    }
+
+    // handle Surname, GivenName formatting
+    if (name.includes(",")) {
+      const parts = name.split(",").map(part => part.trim());
+      if (parts.length == 2) {
+        result = `${parts[1]} ${parts[0]}`;
+      }
+      if (parts.length > 2) {
+        result = `${parts[1]} ${parts[0]} ${parts.slice(2).join(" ")}`;
+      }
+    }
+
+    // remove things like "By:"
+    result = result.replace(/\w+:/, "");
+
+    return this._unescapeHtmlEntities(result);
+  },
+
+  /**
    * Attempts to get excerpt and byline metadata for the article.
    *
    * @param {Object} jsonld — object containing any metadata that
@@ -1499,6 +1529,7 @@ Readability.prototype = {
       }
       var matches = null;
       var name = null;
+      var result = null;
 
       if (elementProperty) {
         matches = elementProperty.match(propertyPattern);
@@ -1507,7 +1538,7 @@ Readability.prototype = {
           // so we can match below.
           name = matches[0].toLowerCase().replace(/\s/g, "");
           // multiple authors
-          values[name] = content.trim();
+          result = content.trim();
         }
       }
       if (!matches && elementName && namePattern.test(elementName)) {
@@ -1516,8 +1547,23 @@ Readability.prototype = {
           // Convert to lowercase, remove any whitespace, and convert dots
           // to colons so we can match below.
           name = name.toLowerCase().replace(/\s/g, "").replace(/\./g, ":");
-          values[name] = content.trim();
+          result = content.trim();
         }
+      }
+
+      // handle properties which might have multiple distinct values, eg: citation_author
+      if (result) {
+        if (values[name]) {
+          if (Array.isArray(values[name]) && typeof result == "string") {
+            values[name].push(result);
+          }
+          if (typeof values[name] == "string") {
+            values[name] = [values[name], result];
+          }
+        } else {
+          values[name] = result;
+        }
+        this.log(`found metadata: ${name}=${values[name]}`);
       }
     });
 
@@ -1569,7 +1615,7 @@ Readability.prototype = {
     // in many sites the meta value is escaped with HTML entities,
     // so here we need to unescape it
     metadata.title = this._unescapeHtmlEntities(metadata.title);
-    metadata.byline = this._unescapeHtmlEntities(metadata.byline);
+    metadata.byline = this._normalizeByline(metadata.byline);
     metadata.excerpt = this._unescapeHtmlEntities(metadata.excerpt);
     metadata.siteName = this._unescapeHtmlEntities(metadata.siteName);
     metadata.publishedTime = this._unescapeHtmlEntities(metadata.publishedTime);
